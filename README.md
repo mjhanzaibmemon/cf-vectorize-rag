@@ -73,14 +73,39 @@ chunks.
 Also not here: streaming responses, a UI, reranking, and hybrid keyword search.
 Each is a reasonable next step; none of them change the four decisions above.
 
+## Verifying it without a Cloudflare account
+
+    npm install
+    npm test
+
+That runs the whole pipeline end to end against in-memory stand-ins for Workers
+AI and Vectorize: ingest, chunk, embed, store, filter, retrieve, refuse, answer.
+No account, no paid plan, no network. You can watch the claims above hold rather
+than trust a screenshot:
+
+- a tenant asking for another tenant's content, in that tenant's own words, gets
+  an answer from its own documents and the other tenant's chunks are never even
+  scored, because the filter runs inside the query rather than after it;
+- re-ingesting an unchanged document produces identical ids and no duplicates;
+- a question the corpus cannot answer is refused, with the scores it considered
+  still reported;
+- a tenant id in the request body is ignored in favour of the one the token maps
+  to.
+
+The fake embedding is a hashed bag of words. It is not a language model and does
+not pretend to be. What it reproduces is the only property the application logic
+depends on: text that shares vocabulary scores higher than text that does not.
+The real models are swapped in by configuration, not by changing this code.
+
 ## Tests
 
     npm test
+    npm run typecheck
 
-The logic that can be tested without the Workers runtime is kept separate from
-the bindings, so the tests are plain unit tests: chunking and overlap, id
-stability across re-ingest and across tenants, the refusal threshold, citation
-formatting, and the auth rule that a tenant in the request body is ignored.
+Unit tests cover chunking and overlap, id stability across re-ingest and across
+tenants, the refusal threshold, citation formatting, and the auth rule. The
+integration tests drive the real `fetch` handler, so the routes, auth and error
+codes are exercised rather than described.
 
 ## Licence
 
