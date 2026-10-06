@@ -1,0 +1,15 @@
+{
+  "note": "Questions with the document each answer must come from, plus questions the corpus cannot answer. A retrieval change that improves one and breaks the other is visible here and nowhere else.",
+  "answerable": [
+    { "question": "How many days of paid holiday do staff get?", "expectDoc": "handbook", "expectText": "25" },
+    { "question": "Who approves an expense of 200?", "expectDoc": "handbook", "expectText": "finance" },
+    { "question": "How often are backups actually restored?", "expectDoc": "security", "expectText": "month" },
+    { "question": "How quickly must a suspected breach be reported?", "expectDoc": "security", "expectText": "hour" },
+    { "question": "How often are laptops replaced?", "expectDoc": "handbook", "expectText": "three years" }
+  ],
+  "unanswerable": [
+    { "question": "What is the company's parental leave policy?" },
+    { "question": "Which cloud provider hosts the payroll system?" },
+    { "question": "What was revenue last quarter?" }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-vectorize-rag",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+
+  // Workers AI runs both the embedding and the generation model.
+  "ai": { "binding": "AI" },
+
+  // The index must be created with the same dimensions the embedding model
+  // returns, and with a cosine metric:
+  //   wrangler vectorize create cf-vectorize-rag --dimensions=768 --metric=cosine
+  //
+  // Metadata indexes are what make the tenant filter fast. Without them the
+  // filter still works and gets slower as the index grows:
+  //   wrangler vectorize create-metadata-index cf-vectorize-rag --property-name=tenant --type=string
+  //   wrangler vectorize create-metadata-index cf-vectorize-rag --property-name=docId --type=string
+  "vectorize": [
+    {
+      "binding": "INDEX",
+      "index_name": "cf-vectorize-rag"
+    }
+  ]
+
+  // TENANT_TOKENS is a secret, not a var:
+  //   wrangler secret put TENANT_TOKENS
+}
