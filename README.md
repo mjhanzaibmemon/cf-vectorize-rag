@@ -10,8 +10,18 @@ demos skip, and each one is visible in the code and checked by a test.
 
     https://cf-vectorize-rag.mjhanzaibmemon123.workers.dev
 
+Open it and you get a page that lets you switch tenant, read the corpus, add
+your own text, ask questions, and drag the score threshold to watch refusal turn
+on and off. Every answer is drawn against the threshold line, so you can see
+which chunks were used, which were considered and rejected, and how close the
+call was.
+
 Two demo tenants, `acme` and `globex`, so the isolation claim is something you
-can attack rather than take on trust.
+can attack rather than take on trust. The threshold slider is part of that: it
+goes all the way to zero, and a test asserts that no setting of it reaches the
+other tenant's data. A threshold is a preference; tenancy is a boundary.
+
+Or drive it with curl.
 
 ```sh
 URL=https://cf-vectorize-rag.mjhanzaibmemon123.workers.dev
@@ -49,9 +59,19 @@ brute-force index rather than Vectorize, because Vectorize requires the Workers
 Paid plan. The application prefers Vectorize whenever the binding is present and
 picks it up without a code change; see `getIndex` in
 [src/d1-index.ts](src/d1-index.ts), which also says where brute force stops
-being the right answer. Workers AI on the free plan has a daily limit, so if the
-demo starts refusing everything, that is the quota rather than the retrieval.
-The tokens above are demo tokens for a corpus of synthetic text.
+being the right answer. The tokens above are demo tokens for a corpus of
+synthetic text.
+
+Workers AI on the free plan has a daily limit, and a public link with a text box
+on it is an invitation to spend it. So the two routes that call a model are rate
+limited per IP, 20 queries and 10 ingests a minute, counted in D1 and returned
+as a 429 with `retry-after`. The limiter fails open: if its own table is
+unavailable the request proceeds, because a demo that bans everyone to protect a
+quota has protected nothing worth having. It is a fixed window, which means a
+caller can send up to twice the limit across a boundary, and
+[test/ratelimit.test.ts](test/ratelimit.test.ts) asserts that rather than
+leaving it as a surprise. Expired rows are swept on a small fraction of
+requests, off the response path.
 
 ## The four decisions
 
@@ -77,11 +97,19 @@ ingesting twice and comparing the ids.
 
 ## Endpoints
 
-    GET  /health              models, dimensions, topK and the score threshold
-    POST /ingest              { docId, text }      -> { chunks, ids }
-    POST /query               { question }         -> { answer, refused, citations, considered }
+    GET  /                    the demo page
+    GET  /health              models, dimensions, topK, the threshold and the limits
+    GET  /documents           what this tenant has ingested
+    POST /ingest              { docId, text }                -> { chunks, ids }
+    POST /query               { question, minScore? }        -> { answer, refused, citations, considered, minScore }
 
-Both POST routes need `Authorization: Bearer <token>`.
+Everything except `/` and `/health` needs `Authorization: Bearer <token>`.
+
+`minScore` is optional and overrides the configured threshold for one call.
+Nonsense falls back to the default and out-of-range values are clamped, because
+it is a preference rather than a permission: a bad preference should not cost
+someone their answer. The applied value comes back in the response, so a result
+can be reproduced.
 
 ## Running it
 
@@ -109,6 +137,72 @@ That third number is the one worth watching. Lower `MIN_SCORE` in the config and
 the first two numbers improve while the third collapses, which is exactly the
 trade you are making and the reason to measure it rather than feel it.
 
+### What it found
+
+The harness is here because it earned its place. Run against the live deployment
+on 2026-10-08, with `MIN_SCORE` at the 0.55 it had shipped with:
+
+    retrieval:  5/5 cited the expected document
+    grounding:  5/5 answers contained the expected fact
+    refusal:    0/3 unanswerable questions were refused
+
+All three questions the corpus could not answer were answered anyway. The two
+flattering numbers were perfect and the one that matters was zero.
+
+No unit test could have caught this. The tests embed text with a hashed bag of
+words, so their scores are internally consistent but have no relationship to
+what a real embedding model produces. Against `bge-base-en-v1.5` on this corpus,
+loosely related text scores around 0.60 and genuinely relevant text starts
+around 0.66, so 0.55 sat underneath the noise. Raising it to 0.65 took refusal
+from 0/3 to 3/3 and cost one grounding point.
+
+Both runs are committed under `eval/results/`. The failing one is the more
+useful file: it is the evidence that the harness measures something.
+
+### Why one run is not a measurement
+
+Three consecutive runs at 0.65 agreed. That looked like confirmation. It wasn't.
+
+Asking the same question four times by hand, against the same data, with the
+same retrieval:
+
+    answered  An expense of 200 needs finance approval before the money is spent [2].
+    answered  ...would need finance approval... [2]
+    refused   The context does not provide information on who approves an expense of 200.
+    refused   The context does not provide enough information to determine who approves...
+
+That question's top chunk scores 0.663 against a 0.65 threshold. Retrieval is
+deterministic and clears the bar every time; generation is sampled, and at this
+margin sampling decides the outcome. Three agreeing runs were three coin flips
+landing the same way.
+
+So the harness takes a repeat count, and a question passes only if it holds on
+every call:
+
+    REPEAT=5 npm run eval
+
+A question that passes four times out of five is reported as `4/5` rather than
+rounded to a verdict. The eval also waits out a 429 from its own rate limiter,
+since at `REPEAT=5` it is a heavy enough caller to trip it. Both show up in the
+run:
+
+    answerable questions (5 calls each)
+      OK  fact  top=0.790  How many days of paid holiday do staff get?
+      OK  4/5   top=0.663  Who approves an expense of 200?
+      OK  fact  top=0.696  How often are backups actually restored?
+      OK  fact  top=0.671  How quickly must a suspected breach be reported?
+      rate limited, waiting 20s
+      OK  fact  top=0.680  How often are laptops replaced?
+
+That `4/5` is the honest reading of the question at 0.663, and it is the only
+one that moves. Everything else holds on all five calls, which is what tells you
+the margin is the cause rather than the model being generally unreliable.
+
+A fixed threshold is the crude form of this decision. Comparing the top score
+against the gap to the next one would adapt better to a question whose whole
+neighbourhood scores high. That is a change worth measuring rather than
+assuming, which is the discipline that produced the number in the first place.
+
 ## What is deliberately not here
 
 Deletion by document. Vectorize deletes by vector id, and it is a vector index
@@ -117,8 +211,8 @@ docId to chunk-ids map in KV or D1. That is a real design decision an app has to
 make, and implementing it badly here would look like a feature while missing
 chunks.
 
-Also not here: streaming responses, a UI, reranking, and hybrid keyword search.
-Each is a reasonable next step; none of them change the four decisions above.
+Also not here: streaming responses, reranking, and hybrid keyword search. Each
+is a reasonable next step; none of them change the four decisions above.
 
 ## Verifying it without a Cloudflare account
 
