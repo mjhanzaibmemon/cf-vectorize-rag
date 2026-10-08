@@ -13,7 +13,15 @@ export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 /** bge-base-en-v1.5 returns 768 dimensions. The Vectorize index is created with the same number. */
 export const EMBEDDING_DIMENSIONS = 768;
 
-export const GENERATION_MODEL = "@cf/meta/llama-3.1-8b-instruct";
+/**
+ * Model ids on Workers AI retire. This one replaced a Llama 3.1 id that was
+ * deprecated on 2026-05-30, and the first live deploy failed on it with
+ * "5028: ... was deprecated". That failure is the argument for this file:
+ * retirement is a one-line fix here, and the error names the model rather than
+ * degrading quietly, which is the behaviour you want from a dependency you do
+ * not control.
+ */
+export const GENERATION_MODEL = "@cf/ibm-granite/granite-4.0-h-micro";
 
 /** How many chunks to retrieve before filtering by score. */
 export const TOP_K = 5;

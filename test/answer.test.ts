@@ -60,7 +60,16 @@ describe("answerQuestion", () => {
   });
 
   it("treats an empty model response as a failure rather than an answer", async () => {
-    await expect(answerQuestion(fakeEnv("   "), "q", [match("a", 0.9)])).rejects.toThrow(/empty/);
+    await expect(answerQuestion(fakeEnv("   "), "q", [match("a", 0.9)])).rejects.toThrow(/no text/);
+  });
+
+  // The error has to name the envelope it actually received. Workers AI returns
+  // different response shapes across its catalog, so when a model swap breaks
+  // parsing, "empty answer" sends you looking in the wrong place.
+  it("names the envelope keys it saw when it cannot find any text", async () => {
+    await expect(answerQuestion(fakeEnv("   "), "q", [match("a", 0.9)])).rejects.toThrow(
+      /envelope keys were \[response\]/,
+    );
   });
 });
 

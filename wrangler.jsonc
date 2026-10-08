@@ -8,6 +8,24 @@
   // Workers AI runs both the embedding and the generation model.
   "ai": { "binding": "AI" },
 
+  // The live demo uses D1 as a brute-force vector index, because Vectorize
+  // requires the Workers Paid plan and a demo nobody can run proves nothing.
+  // src/d1-index.ts explains the trade and where it stops being the right one.
+  //
+  // Schema:
+  //   wrangler d1 execute cf-vectorize-rag-demo --remote --file=./schema.sql
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cf-vectorize-rag-demo",
+      "database_id": "e1c5e6f0-e630-4d4b-ab1a-174245dd6c38"
+    }
+  ],
+
+  // The production path. Uncomment on a Workers Paid plan and the application
+  // prefers it automatically: getIndex() in src/d1-index.ts picks INDEX over DB
+  // whenever the binding is present, so no application code changes.
+  //
   // The index must be created with the same dimensions the embedding model
   // returns, and with a cosine metric:
   //   wrangler vectorize create cf-vectorize-rag --dimensions=768 --metric=cosine
@@ -16,13 +34,15 @@
   // filter still works and gets slower as the index grows:
   //   wrangler vectorize create-metadata-index cf-vectorize-rag --property-name=tenant --type=string
   //   wrangler vectorize create-metadata-index cf-vectorize-rag --property-name=docId --type=string
-  "vectorize": [
-    {
-      "binding": "INDEX",
-      "index_name": "cf-vectorize-rag"
-    }
-  ]
+  //
+  // "vectorize": [
+  //   {
+  //     "binding": "INDEX",
+  //     "index_name": "cf-vectorize-rag"
+  //   }
+  // ],
 
   // TENANT_TOKENS is a secret, not a var:
   //   wrangler secret put TENANT_TOKENS
+  "vars": {}
 }

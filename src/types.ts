@@ -1,6 +1,17 @@
 export interface Env {
   AI: Ai;
-  INDEX: VectorizeIndex;
+
+  /**
+   * The production vector index. Optional only so the demo can run on the free
+   * plan, where Vectorize is not available; see DB below and src/d1-index.ts.
+   */
+  INDEX?: VectorizeIndex;
+
+  /**
+   * D1, used as a brute-force vector index when INDEX is absent. The code
+   * prefers Vectorize whenever it is bound.
+   */
+  DB?: D1Database;
 
   /**
    * JSON mapping of API token to tenant id, for example:

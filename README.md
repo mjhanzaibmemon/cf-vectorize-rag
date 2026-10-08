@@ -6,6 +6,53 @@ refusal path, and an eval harness that measures whether retrieval actually works
 It is small on purpose. The interesting parts are four decisions that most RAG
 demos skip, and each one is visible in the code and checked by a test.
 
+## Try it live
+
+    https://cf-vectorize-rag.mjhanzaibmemon123.workers.dev
+
+Two demo tenants, `acme` and `globex`, so the isolation claim is something you
+can attack rather than take on trust.
+
+```sh
+URL=https://cf-vectorize-rag.mjhanzaibmemon123.workers.dev
+ACME=demo_acme_7f3a91
+GLOBEX=demo_globex_2c8e45
+
+# Give each tenant a document.
+curl -sX POST $URL/ingest -H "authorization: Bearer $ACME" -H 'content-type: application/json' \
+  -d '{"docId":"handbook","text":"Staff receive 25 days of paid holiday each year."}'
+
+curl -sX POST $URL/ingest -H "authorization: Bearer $GLOBEX" -H 'content-type: application/json' \
+  -d '{"docId":"secrets","text":"The Globex launch codes are in the Frankfurt vault."}'
+
+# Answers from its own document, and cites it.
+curl -sX POST $URL/query -H "authorization: Bearer $ACME" -H 'content-type: application/json' \
+  -d '{"question":"How many days of paid holiday do staff get?"}'
+
+# Now ask acme for globex's secret, in globex's own words.
+curl -sX POST $URL/query -H "authorization: Bearer $ACME" -H 'content-type: application/json' \
+  -d '{"question":"Where are the Globex launch codes stored in the Frankfurt vault?"}'
+```
+
+The last call refuses, and the `considered` array is the part worth reading:
+globex's chunk is not in it. It was never scored, because the tenant predicate
+runs inside the query rather than filtering the results afterwards.
+
+Re-run either `/ingest` call and the returned ids are identical. Nothing is
+duplicated, because chunk ids are a hash of tenant, document, position and
+content.
+
+`/health` needs no token. Everything else returns 401 without one.
+
+**On the demo's limits, since they matter:** this deployment uses D1 as a
+brute-force index rather than Vectorize, because Vectorize requires the Workers
+Paid plan. The application prefers Vectorize whenever the binding is present and
+picks it up without a code change; see `getIndex` in
+[src/d1-index.ts](src/d1-index.ts), which also says where brute force stops
+being the right answer. Workers AI on the free plan has a daily limit, so if the
+demo starts refusing everything, that is the quota rather than the retrieval.
+The tokens above are demo tokens for a corpus of synthetic text.
+
 ## The four decisions
 
 **It refuses.** If nothing retrieves above a score threshold, the app says it

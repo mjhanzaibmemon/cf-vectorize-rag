@@ -1,4 +1,5 @@
 import { EMBEDDING_MODEL, TOP_K } from "./config";
+import { getIndex } from "./d1-index";
 import type { Chunk, Env, Match } from "./types";
 
 /**
@@ -30,7 +31,7 @@ export async function upsertChunks(env: Env, tenant: string, chunks: Chunk[]): P
     chunks.map((c) => c.text),
   );
 
-  await env.INDEX.upsert(
+  await getIndex(env).upsert(
     chunks.map((chunk, i) => {
       const values = vectors[i];
       if (!values) {
@@ -67,7 +68,7 @@ export async function retrieve(env: Env, tenant: string, question: string): Prom
   const [vector] = await embed(env, [question]);
   if (!vector) throw new Error("the question produced no embedding");
 
-  const result = await env.INDEX.query(vector, {
+  const result = await getIndex(env).query(vector, {
     topK: TOP_K,
     filter: { tenant },
     returnMetadata: "all",

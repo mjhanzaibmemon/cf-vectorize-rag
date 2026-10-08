@@ -66,12 +66,46 @@ export async function answerQuestion(
       { role: "user", content: buildPrompt(question, good) },
     ],
     max_tokens: MAX_ANSWER_TOKENS,
-  })) as { response?: string };
+  })) as unknown;
 
-  const answer = (result.response ?? "").trim();
+  const answer = extractText(result);
   if (answer.length === 0) {
-    throw new Error("the generation model returned an empty answer");
+    throw new Error(
+      `the generation model returned no text; envelope keys were [${Object.keys(
+        (result as Record<string, unknown>) ?? {},
+      ).join(", ")}]`,
+    );
   }
 
   return { answer, refused: false, citations: toCitations(good), considered };
+}
+
+/**
+ * Pull the answer text out of whatever envelope the model returned.
+ *
+ * Workers AI does not use one response shape across its catalog: older models
+ * return { response }, OpenAI-compatible ones return choices[].message.content,
+ * and some wrap the whole thing in { result }. Hard-coding one of those is how
+ * a model swap turns into a 500 that says nothing useful, which is exactly what
+ * happened here on the first deploy after a model retirement.
+ *
+ * When none of the shapes match, the caller raises an error naming the keys it
+ * actually saw, so the next person reads the answer instead of guessing it.
+ */
+function extractText(result: unknown): string {
+  if (typeof result === "string") return result.trim();
+  if (!result || typeof result !== "object") return "";
+
+  const r = result as Record<string, unknown>;
+
+  if (typeof r.response === "string") return r.response.trim();
+
+  const choice = Array.isArray(r.choices) ? (r.choices[0] as Record<string, unknown>) : undefined;
+  const message = choice?.message as Record<string, unknown> | undefined;
+  if (typeof message?.content === "string") return message.content.trim();
+  if (typeof choice?.text === "string") return choice.text.trim();
+
+  if (r.result && typeof r.result === "object") return extractText(r.result);
+
+  return "";
 }
