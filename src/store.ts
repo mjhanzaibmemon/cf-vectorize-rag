@@ -92,3 +92,30 @@ export async function retrieve(env: Env, tenant: string, question: string): Prom
  * to make up front, and faking it with a zero-vector probe would look like a
  * feature while quietly missing chunks.
  */
+
+/**
+ * List what a tenant has ingested.
+ *
+ * This reads D1 directly rather than going through the index interface, because
+ * a vector index is not a database you can scan by metadata. Vectorize can tell
+ * you which vectors are near a query; it cannot tell you which documents exist.
+ * The same limitation is why deletion is not implemented above.
+ *
+ * So this is honest about its scope: it serves the demo, and an application on
+ * Vectorize would keep its own document table for exactly this question.
+ */
+export async function listDocuments(
+  env: Env,
+  tenant: string,
+): Promise<{ docId: string; chunks: number; chars: number }[]> {
+  if (!env.DB) return [];
+
+  const rows = await env.DB.prepare(
+    `SELECT doc_id AS docId, COUNT(*) AS chunks, SUM(length(text)) AS chars
+       FROM vectors WHERE tenant = ? GROUP BY doc_id ORDER BY doc_id`,
+  )
+    .bind(tenant)
+    .all<{ docId: string; chunks: number; chars: number }>();
+
+  return rows.results ?? [];
+}

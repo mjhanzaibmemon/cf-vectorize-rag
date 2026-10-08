@@ -3,7 +3,7 @@ import { tenantFromRequest } from "./auth";
 import { buildChunks } from "./chunk";
 import { HOME_HTML } from "./home";
 import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, GENERATION_MODEL, MIN_SCORE, TOP_K } from "./config";
-import { retrieve, upsertChunks } from "./store";
+import { listDocuments, retrieve, upsertChunks } from "./store";
 import type { Env } from "./types";
 
 export default {
@@ -26,6 +26,12 @@ export default {
           topK: TOP_K,
           minScore: MIN_SCORE,
         });
+      }
+
+      if (request.method === "GET" && url.pathname === "/documents") {
+        const tenant = tenantFromRequest(request, env);
+        if (!tenant) return json({ error: "unauthorized" }, 401);
+        return json({ tenant, documents: await listDocuments(env, tenant) });
       }
 
       if (request.method === "POST" && url.pathname === "/ingest") {
