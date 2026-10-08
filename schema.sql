@@ -15,3 +15,14 @@ CREATE TABLE IF NOT EXISTS vectors (
 
 CREATE INDEX IF NOT EXISTS vectors_tenant     ON vectors (tenant);
 CREATE INDEX IF NOT EXISTS vectors_tenant_doc ON vectors (tenant, doc_id);
+
+-- Fixed-window rate limiting for the two routes that call Workers AI.
+-- See src/ratelimit.ts for why the window is fixed and why it fails open.
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket     TEXT PRIMARY KEY,   -- route:caller:window_start
+  hits       INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS rate_limits_expiry ON rate_limits (expires_at);

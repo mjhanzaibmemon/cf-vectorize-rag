@@ -19,6 +19,20 @@ import { fileURLToPath } from "node:url";
 // derive it from the URL instead and work everywhere.
 const here = fileURLToPath(new URL(".", import.meta.url));
 
+/**
+ * How many times to ask each question.
+ *
+ * Generation is sampled rather than deterministic, so one call per question
+ * measures a coin flip and not the system. On 2026-10-08 a question scoring
+ * 0.663 against a 0.65 threshold answered correctly on two calls and declined
+ * on the next two, with identical retrieval every time. A single run would have
+ * reported either of those as the result.
+ *
+ * The default stays 1 because every extra pass spends Workers AI quota. Raise it
+ * when the number has to mean something:  REPEAT=5 npm run eval
+ */
+const REPEAT = Math.max(1, Number(process.env.REPEAT ?? 1));
+
 const BASE_URL = process.env.BASE_URL;
 const TOKEN = process.env.TOKEN;
 
@@ -39,15 +53,39 @@ interface QueryResponse {
   considered: { id: string; score: number }[];
 }
 
-async function post(path: string, body: unknown): Promise<QueryResponse & Record<string, unknown>> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  if (!res.ok) throw new Error(`${path} returned ${res.status}: ${await res.text()}`);
-  return (await res.json()) as QueryResponse & Record<string, unknown>;
+/**
+ * POST, and respect the server when it says to slow down.
+ *
+ * The deployment rate limits the routes that call Workers AI, and at REPEAT=5
+ * this harness asks forty questions in a burst, which is exactly the traffic
+ * that limit exists to stop. A client that treats 429 as a failure is simply a
+ * badly behaved client: the response carries retryAfter, so the correct
+ * behaviour is to wait that long and continue.
+ *
+ * Waiting makes a large run slow rather than impossible, which is the right
+ * trade for a measurement nobody is watching in real time.
+ */
+async function post(path: string, body: unknown): Promise<QueryResponse & Record<string, unknown>> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 429 && attempt < 10) {
+      const retryAfter = Number(res.headers.get("retry-after") ?? 5);
+      const wait = (Number.isFinite(retryAfter) ? retryAfter : 5) + 1;
+      console.log(`  rate limited, waiting ${wait}s`);
+      await sleep(wait * 1000);
+      continue;
+    }
+
+    if (!res.ok) throw new Error(`${path} returned ${res.status}: ${await res.text()}`);
+    return (await res.json()) as QueryResponse & Record<string, unknown>;
+  }
 }
 
 async function main() {
@@ -75,32 +113,63 @@ async function main() {
   let retrieved = 0;
   let grounded = 0;
 
-  console.log("\nanswerable questions");
+  console.log(
+    `
+answerable questions (${REPEAT} call${REPEAT === 1 ? "" : "s"} each)`,
+  );
   for (const item of golden.answerable) {
-    const result = await post("/query", { question: item.question });
+    let docHits = 0;
+    let factHits = 0;
+    let top = 0;
 
-    const fromRightDoc = result.citations.some((c) => c.docId === item.expectDoc);
-    const containsFact = result.answer.toLowerCase().includes(item.expectText.toLowerCase());
+    for (let i = 0; i < REPEAT; i++) {
+      const result = await post("/query", { question: item.question });
+      if (result.citations.some((c) => c.docId === item.expectDoc)) docHits++;
+      if (result.answer.toLowerCase().includes(item.expectText.toLowerCase())) factHits++;
+      top = result.considered[0]?.score ?? 0;
+    }
 
-    if (fromRightDoc) retrieved++;
-    if (containsFact) grounded++;
+    // A question counts as grounded only when it holds on every call. Generation
+    // is sampled, so a question that passes sometimes is not a pass with noise on
+    // it; it is an unreliable answer, and averaging that away is how a flaky
+    // system gets reported as a working one.
+    if (docHits === REPEAT) retrieved++;
+    if (factHits === REPEAT) grounded++;
 
-    const top = result.considered[0]?.score ?? 0;
+    const flaky = factHits > 0 && factHits < REPEAT;
     console.log(
-      `  ${fromRightDoc ? "OK " : "MISS"} ${containsFact ? "fact" : "----"}  top=${top.toFixed(3)}  ${item.question}`,
+      `  ${docHits === REPEAT ? "OK " : "MISS"} ${
+        factHits === REPEAT ? "fact" : flaky ? `${factHits}/${REPEAT} ` : "----"
+      }  top=${top.toFixed(3)}  ${item.question}`,
     );
   }
 
   let refused = 0;
 
-  console.log("\nquestions the corpus cannot answer");
+  console.log(
+    `
+questions the corpus cannot answer (${REPEAT} call${REPEAT === 1 ? "" : "s"} each)`,
+  );
   for (const item of golden.unanswerable) {
-    const result = await post("/query", { question: item.question });
-    if (result.refused) refused++;
+    let refusals = 0;
+    let top = 0;
 
-    const top = result.considered[0]?.score ?? 0;
+    for (let i = 0; i < REPEAT; i++) {
+      const result = await post("/query", { question: item.question });
+      if (result.refused) refusals++;
+      top = result.considered[0]?.score ?? 0;
+    }
+
+    // Refusing most of the time is not refusing. A question that invents an
+    // answer on one call in five is a question that leaks, and the count has to
+    // say so rather than round it away.
+    if (refusals === REPEAT) refused++;
+
+    const flaky = refusals > 0 && refusals < REPEAT;
     console.log(
-      `  ${result.refused ? "refused " : "ANSWERED"}  top=${top.toFixed(3)}  ${item.question}`,
+      `  ${
+        refusals === REPEAT ? "refused " : flaky ? `${refusals}/${REPEAT} ref` : "ANSWERED"
+      }  top=${top.toFixed(3)}  ${item.question}`,
     );
   }
 

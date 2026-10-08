@@ -1,0 +1,21 @@
+ingesting corpus
+  handbook: 1 chunks, re-ingest produced the same ids
+  security: 1 chunks, re-ingest produced the same ids
+
+answerable questions
+  OK  fact  top=0.790  How many days of paid holiday do staff get?
+  OK  fact  top=0.663  Who approves an expense of 200?
+  OK  fact  top=0.696  How often are backups actually restored?
+  OK  fact  top=0.671  How quickly must a suspected breach be reported?
+  OK  fact  top=0.680  How often are laptops replaced?
+
+questions the corpus cannot answer
+  ANSWERED  top=0.633  What is the company's parental leave policy?
+  ANSWERED  top=0.610  Which cloud provider hosts the payroll system?
+  ANSWERED  top=0.595  What was revenue last quarter?
+
+retrieval:  5/5 cited the expected document
+grounding:  5/5 answers contained the expected fact
+refusal:    0/3 unanswerable questions were refused
+
+eval failed: see the lines above

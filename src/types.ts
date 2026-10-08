@@ -54,4 +54,6 @@ export interface QueryResult {
   citations: Citation[];
   /** Scores of everything retrieved, including what fell below the threshold. */
   considered: { id: string; score: number }[];
+  /** The threshold actually applied, which a caller may override per request. */
+  minScore: number;
 }

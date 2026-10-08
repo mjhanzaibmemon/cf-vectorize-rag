@@ -32,9 +32,25 @@ export const TOP_K = 5;
  *
  * This number is a product decision, not a technical one. Raise it and the app
  * says "I don't know" more often. Lower it and it starts guessing. The eval
- * harness exists so you can change it and measure what happened.
+ * harness exists so you can change it and measure what happened, and on
+ * 2026-10-08 it did. At 0.55 the eval scored 5/5 retrieval, 5/5 grounding and
+ * 0/3 refusal: every unanswerable question was answered anyway. The run is
+ * committed under eval/results/ rather than deleted, because it is the evidence
+ * that the harness works.
+ *
+ * On this corpus and this embedding model, loosely related text scores around
+ * 0.60 and genuinely relevant text starts around 0.66, so 0.55 sat below the
+ * noise floor. 0.65 separates them.
+ *
+ * Two honest caveats. Eight questions is a small sample, and the margin between
+ * the highest unanswerable (0.633) and the lowest answerable (0.663) is 0.03,
+ * which is not much. A larger corpus will move both. And a fixed threshold is
+ * the crude form of this decision: comparing the top score against the gap to
+ * the next one adapts better to a question whose whole neighbourhood scores
+ * high. That is a change worth measuring rather than assuming, which is the
+ * same discipline that produced this number.
  */
-export const MIN_SCORE = 0.55;
+export const MIN_SCORE = 0.65;
 
 export const CHUNK_SIZE = 900;
 export const CHUNK_OVERLAP = 150;

@@ -1,0 +1,20 @@
+ingesting corpus
+  handbook: 1 chunks, re-ingest produced the same ids
+  security: 1 chunks, re-ingest produced the same ids
+
+answerable questions (5 calls each)
+  OK  fact  top=0.790  How many days of paid holiday do staff get?
+  OK  4/5   top=0.663  Who approves an expense of 200?
+  OK  fact  top=0.696  How often are backups actually restored?
+  OK  fact  top=0.671  How quickly must a suspected breach be reported?
+  OK  fact  top=0.680  How often are laptops replaced?
+
+questions the corpus cannot answer (5 calls each)
+Error: /query returned 429: {
+  "error": "rate limited",
+  "detail": "This demo allows 20 query calls per 60s per IP, because Workers AI has a daily quota and one visitor should not spend everybody's.",
+  "retryAfter": 28
+}
+    at post (C:\Users\MUHAMMAD JAHANZEB\Desktop\projects\llc\cf-vectorize-rag\eval\run-eval.ts:63:22)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async main (C:\Users\MUHAMMAD JAHANZEB\Desktop\projects\llc\cf-vectorize-rag\eval\run-eval.ts:134:22)

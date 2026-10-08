@@ -138,6 +138,11 @@ export const HOME_HTML = `<!doctype html>
   .note { color:var(--muted); font-size:13px; line-height:1.6; }
   .hint { color:var(--faint); font-size:12.5px; margin-top:9px; }
   .hidden { display:none; }
+
+  .slider { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+  .slider .val { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+                 font-size:13px; font-weight:650; color:var(--accent); }
+  input[type=range] { width:100%; margin:0; accent-color:var(--accent); height:20px; cursor:pointer; }
   .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--line);
           border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
@@ -208,6 +213,15 @@ export const HOME_HTML = `<!doctype html>
     <button class="chip ex" data-q="Where are the Globex launch codes stored in the Frankfurt vault?">cross-tenant probe</button>
     <button class="chip ex" data-q="quantum submarine propeller certification schedule">nothing can answer this</button>
   </div>
+
+  <div class="slider">
+    <div class="row" style="justify-content:space-between; margin-bottom:5px">
+      <label for="thr" style="margin:0">Confidence threshold</label>
+      <span class="val" id="thrVal">0.55</span>
+    </div>
+    <input type="range" id="thr" min="0" max="1" step="0.01" value="0.55">
+    <p class="hint" id="thrNote"></p>
+  </div>
 </div>
 
 <div class="panel" id="result">
@@ -260,7 +274,7 @@ export const HOME_HTML = `<!doctype html>
 <script>
 (function () {
   var TOKENS = { acme: "demo_acme_7f3a91", globex: "demo_globex_2c8e45" };
-  var THRESHOLD = 0.55;
+  var DEFAULT_THRESHOLD = 0.55;
   var DEMO = {
     acme: { docId: "handbook", text: "# Handbook\\n\\nStaff receive 25 days of paid holiday each year, plus public holidays. Unused holiday does not carry into the next year.\\n\\nExpenses under 50 pounds are approved by a line manager. Anything larger needs finance approval before the money is spent." },
     globex: { docId: "globex-internal", text: "# Globex internal\\n\\nThe Globex launch codes are stored in the vault in Frankfurt. Only the Globex operations team may rotate the Frankfurt vault keys." }
@@ -355,12 +369,12 @@ export const HOME_HTML = `<!doctype html>
     b.addEventListener("click", function () { $("q").value = b.dataset.q; $("q").focus(); });
   });
 
-  function drawScale(considered, citedIds) {
+  function drawScale(considered, citedIds, threshold) {
     var track = $("track");
-    var pct = (THRESHOLD * 100).toFixed(1) + "%";
+    var pct = (threshold * 100).toFixed(1) + "%";
     var html = '<div class="axis"></div>' +
       '<div class="thresh" style="left:' + pct + '"></div>' +
-      '<div class="threshlabel" style="left:' + pct + '">' + THRESHOLD + '</div>';
+      '<div class="threshlabel" style="left:' + pct + '">' + threshold.toFixed(2) + '</div>';
 
     considered.forEach(function (c) {
       var used = citedIds.indexOf(c.id) !== -1;
@@ -387,7 +401,7 @@ export const HOME_HTML = `<!doctype html>
     $("answer").textContent = r.answer;
 
     var cited = (r.citations || []).map(function (c) { return c.id; });
-    drawScale(r.considered || [], cited);
+    drawScale(r.considered || [], cited, typeof r.minScore === "number" ? r.minScore : DEFAULT_THRESHOLD);
 
     $("cites").innerHTML = (r.citations || []).map(function (c, i) {
       return '<div class="cite"><div class="head">[' + (i + 1) + '] <b>' + esc(c.docId) +
@@ -406,13 +420,31 @@ export const HOME_HTML = `<!doctype html>
     $("placeholder").innerHTML = '<span class="spin"></span> asking as ' + esc(tenant) + '...';
     $("out").classList.add("hidden");
 
-    api("/query", { method: "POST", body: { question: q } })
+    api("/query", { method: "POST", body: { question: q, minScore: currentThreshold() } })
       .then(function (r) {
         btn.disabled = false;
         if (r.error) { $("placeholder").textContent = "error: " + r.error; return; }
         render(r);
       })
       .catch(function (e) { btn.disabled = false; $("placeholder").textContent = String(e); });
+  });
+
+  function currentThreshold() { return parseFloat($("thr").value); }
+
+  /* The slider is the argument this project is making, so the label says what
+     each end of it costs rather than leaving the visitor to infer it. */
+  function describeThreshold(v) {
+    if (v <= 0.2) return "Almost nothing is refused. Watch the cross-tenant probe start producing an answer assembled from whatever was nearest, which is how a confident wrong answer is born.";
+    if (v < 0.5) return "Loose. More questions get answered, and more of those answers rest on weak context.";
+    if (v <= 0.65) return "The configured default. Answers when the corpus supports it, refuses when it does not.";
+    if (v < 0.9) return "Strict. Fewer wrong answers, and some questions the corpus could have answered are refused instead.";
+    return "Almost everything is refused, including questions the corpus answers well.";
+  }
+
+  $("thr").addEventListener("input", function () {
+    var v = currentThreshold();
+    $("thrVal").textContent = v.toFixed(2);
+    $("thrNote").textContent = describeThreshold(v);
   });
 
   $("q").addEventListener("keydown", function (e) { if (e.key === "Enter") $("ask").click(); });
@@ -422,6 +454,7 @@ export const HOME_HTML = `<!doctype html>
     this.textContent = open ? "Show raw response" : "Hide raw response";
   });
 
+  $("thrNote").textContent = describeThreshold(DEFAULT_THRESHOLD);
   refreshDocs();
 })();
 </script>

@@ -41,19 +41,33 @@ export function buildPrompt(question: string, matches: Match[]): string {
   ].join("\n");
 }
 
+/**
+ * Answer, or refuse.
+ *
+ * minScore is a per-request override of the configured threshold. It is exposed
+ * because relevance is a tuning decision a caller may legitimately make, and
+ * because the page uses it to show what the trade actually costs: lower it and
+ * answers appear while refusal collapses.
+ *
+ * It is worth being precise about why this is safe when a caller-supplied
+ * tenant would not be. A threshold decides how sure the system must be before
+ * it speaks. Tenancy decides whose data it may read at all. The first is a
+ * preference; the second is a boundary, and boundaries are not parameters.
+ */
 export async function answerQuestion(
   env: Env,
   question: string,
   matches: Match[],
+  minScore = MIN_SCORE,
 ): Promise<QueryResult> {
   const considered = matches.map((m) => ({ id: m.id, score: Number(m.score.toFixed(4)) }));
-  const good = usable(matches);
+  const good = usable(matches, minScore);
 
   // Refusing is a feature. A RAG system that always answers is a system that
   // has quietly started making things up, and the eval harness cannot tell the
   // difference unless refusal is a real, reachable state.
   if (good.length === 0) {
-    return { answer: REFUSAL, refused: true, citations: [], considered };
+    return { answer: REFUSAL, refused: true, citations: [], considered, minScore };
   }
 
   const result = (await env.AI.run(GENERATION_MODEL, {
@@ -77,7 +91,7 @@ export async function answerQuestion(
     );
   }
 
-  return { answer, refused: false, citations: toCitations(good), considered };
+  return { answer, refused: false, citations: toCitations(good), considered, minScore };
 }
 
 /**
