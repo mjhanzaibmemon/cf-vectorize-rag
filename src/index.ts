@@ -1,6 +1,7 @@
 import { answerQuestion } from "./answer";
 import { tenantFromRequest } from "./auth";
 import { buildChunks } from "./chunk";
+import { HOME_HTML } from "./home";
 import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, GENERATION_MODEL, MIN_SCORE, TOP_K } from "./config";
 import { retrieve, upsertChunks } from "./store";
 import type { Env } from "./types";
@@ -10,6 +11,12 @@ export default {
     const url = new URL(request.url);
 
     try {
+      if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
+        return new Response(HOME_HTML, {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+
       if (request.method === "GET" && url.pathname === "/health") {
         return json({
           ok: true,
